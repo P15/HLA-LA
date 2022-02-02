@@ -2,8 +2,8 @@
 # 
 # For recent versions of BamTools (>= 2.5):
 #
-BOOST_PATH ?= /data/projects/phillippy/software/boost_1_60_0/
-BAMTOOLS_PATH ?= /data/projects/phillippy/software/bamtools_new/install
+BOOST_PATH ?= /usr/lib
+BAMTOOLS_PATH ?= /bamtools
 BOOST_INCLUDE = $(BOOST_PATH)/include
 BOOST_LIB = $(BOOST_PATH)/lib
 BAMTOOLS_INCLUDE = $(BAMTOOLS_PATH)/include/bamtools
