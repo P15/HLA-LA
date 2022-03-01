@@ -127,7 +127,166 @@ int main(int argc, char *argv[]) {
     pathFinder pF(arguments);
     assert(arguments.count("action"));
 
-    if(arguments.at("action") == "HLA")
+    // what follows is the new multi-step mapping
+    if(arguments.at("action") == "multiHLA")
+    {
+        // ../bin/HLA-PRG-LA --action HLA --sampleID NA12878 --BAM /gpfs1/well/gsk_hla/temp_mapping_2/NA12878_PRG/merged.bam --outputDirectory /gpfs1/well/gsk_hla/HLA-PRG-LA/working/NA12878_PLATINUM --trueHLA /Net/birch/data/dilthey/1000GHLA/G1000_GSK_combined.txt.manuallyAmended
+        // ../bin/HLA-PRG-LA --action HLA --sampleID NA12892_REDUCED --BAM /gpfs1/well/gsk_hla/PRG_Remapping/BAMs/PLATINUM_NA12892/merged.bam --outputDirectory /gpfs1/well/gsk_hla/HLA-PRG-LA/working/NA12892_PLATINUM_RED --trueHLA /Net/birch/data/dilthey/1000GHLA/G1000_GSK_combined.txt.manuallyAmended
+        assert(arguments.count("sampleID"));
+        assert(arguments.count("BAM") || (arguments.count("FASTQ1") && arguments.count("FASTQ2")));
+        assert(arguments.count("outputDirectory"));
+        assert(arguments.count("PRG_graph_dir"));
+        std::string sampleID = arguments.at("sampleID");
+        std::string BAM = arguments.at("BAM");
+        std::string outputDirectory = arguments.at("outputDirectory");
+        std::string PRG_graph_dir = arguments.at("PRG_graph_dir");
+        if(arguments.count("FASTQ1"))
+        {
+            assert(arguments.count("mapAgainstCompleteGenome"));
+            assert(! arguments.count("BAM"));
+        }
+
+        std::string file_true_HLA_types = (arguments.count("trueHLA") ? arguments.at("trueHLA") : "");
+        if(! Utilities::directoryExists(outputDirectory))
+        {
+            Utilities::makeDir(outputDirectory);
+        }
+        //
+        std::map<std::string, std::map<std::string, std::pair<std::set<std::string>, std::set<std::string>>>> inferredHLA;
+        mapper::processBAM BAMprocessor (PRG_graph_dir);
+        std::pair<double, double> IS_estimate;
+        if(arguments.count("BAM"))
+        {
+            assert(Utilities::fileExists(BAM));
+            IS_estimate = BAMprocessor.estimateInsertSize(BAM, true);
+            bool alwaysStartFromScratch = true;
+            if(alwaysStartFromScratch)
+            {
+                Utilities::make_or_clearDirectory(outputDirectory);
+            }
+            else
+            {
+                if(!Utilities::directoryExists(outputDirectory))
+                {
+                    Utilities::makeDir(outputDirectory);
+                }
+            }
+            std::vector<std::string> sampledReferenceGenomes = Utilities::getAllLines(PRG_graph_dir + "/sampledReferenceGenomes.txt");
+            // extract reads
+            std::string fastq_extracted_forRemapping_1;
+            std::string fastq_extracted_forRemapping_2;
+            std::string dir_extractedReads_for_remapping = outputDirectory + "/extractedReads_forRemapping";
+            if(alwaysStartFromScratch || (!Utilities::directoryExists(dir_extractedReads_for_remapping)))
+            {
+                Utilities::make_or_clearDirectory(dir_extractedReads_for_remapping);
+                std::string PRG_sequences_file = PRG_graph_dir + "/sequences.txt";
+                std::map<std::string, std::pair<int, int>> regions_for_extraction;
+                {
+                    // read regions for extraction
+                    std::ifstream PRG_covered_regions_stream;
+                    PRG_covered_regions_stream.open(PRG_sequences_file.c_str());
+                    assert(PRG_covered_regions_stream.is_open());
+                    assert(PRG_covered_regions_stream.good());
+                    std::string line;
+                    std::getline(PRG_covered_regions_stream, line);
+                    std::string headerLine = line;
+                    Utilities::eraseNL(headerLine);
+                    std::vector<std::string> headerFields = Utilities::split(headerLine, "\t");
+                    assert(headerFields.at(0) == "SequenceID");
+                    assert(headerFields.at(1) == "Name");
+                    assert(headerFields.at(2) == "FASTAID");
+                    assert(headerFields.at(3) == "Chr");
+                    assert(headerFields.at(4) == "Start_1based");
+                    assert(headerFields.at(5) == "Stop_1based");
+                    while(PRG_covered_regions_stream.good())
+                    {
+                        std::getline(PRG_covered_regions_stream, line);
+                        Utilities::eraseNL(line);
+                        if(line.length() == 0)
+                        {
+                            continue;
+                        }
+                        std::vector<std::string> fields = Utilities::split(line, "\t");
+                        assert(fields.size() == headerFields.size());
+                        std::string BAMid;
+                        int startIndex_0based;
+                        int stopIndex_0based;
+                        std::string FastaID = fields.at(2);
+                        std::string Chr = fields.at(3);
+                        std::string start_str = fields.at(4);
+                        std::string stop_str = fields.at(5);
+                        if(Chr != "")
+                        {
+                            BAMid = Chr;
+                            assert(start_str.length());
+                            assert(stop_str.length());
+                            startIndex_0based = Utilities::StrtoI(start_str);
+                            stopIndex_0based = Utilities::StrtoI(stop_str);
+                            assert(startIndex_0based >= 0);
+                            assert(stopIndex_0based >= 0);
+                            assert(startIndex_0based <= stopIndex_0based);
+                        }
+                        else
+                        {
+                            assert(FastaID.length());
+                            BAMid = FastaID;
+                            assert(start_str.length() == 0);
+                            assert(stop_str.length() == 0);
+                            startIndex_0based = -1;
+                            stopIndex_0based = -1;
+                        }
+                        assert(BAMid.length());
+                        assert(((startIndex_0based == -1) && (stopIndex_0based == -1)) || ((startIndex_0based != -1) && (stopIndex_0based != -1) && (startIndex_0based <= stopIndex_0based)));
+                        regions_for_extraction[BAMid] = std::make_pair(startIndex_0based, stopIndex_0based);
+                    }
+                }
+                linearALTs::linearALTs::extractReadsFromBAM(dir_extractedReads_for_remapping, BAM, regions_for_extraction);
+                fastq_extracted_forRemapping_1 = dir_extractedReads_for_remapping + "/R_1.fq";
+                fastq_extracted_forRemapping_2 = dir_extractedReads_for_remapping + "/R_2.fq";
+                assert(Utilities::fileExists(fastq_extracted_forRemapping_1));
+                assert(Utilities::fileExists(fastq_extracted_forRemapping_2));
+            }
+            else
+            {
+                fastq_extracted_forRemapping_1 = dir_extractedReads_for_remapping + "/R_1.fq";
+                fastq_extracted_forRemapping_2 = dir_extractedReads_for_remapping + "/R_2.fq";
+                assert(Utilities::fileExists(fastq_extracted_forRemapping_1));
+                assert(Utilities::fileExists(fastq_extracted_forRemapping_2));
+            }
+            std::vector<std::string> remapped_BAMs;
+            for(unsigned int genomeI = 0; genomeI < sampledReferenceGenomes.size(); genomeI++)
+            {
+                std::string sampledReferenceGenome = sampledReferenceGenomes.at(genomeI);
+                std::string BAM_remapped = outputDirectory + "/sampled_" + Utilities::ItoStr(genomeI) + ".bam";
+                std::cout << Utilities::timestamp() << "Carry out remapping step for sampled genome " << genomeI << " - input " << BAM << ", output " << BAM_remapped << "\n" << std::flush;
+                if(alwaysStartFromScratch || (! Utilities::fileExists(BAM_remapped)))
+                {
+                    mapper::bwa::BWAmapper bwaMapper(pF);
+                    bwaMapper.map(sampledReferenceGenome, fastq_extracted_forRemapping_1, fastq_extracted_forRemapping_2, BAM_remapped, true);
+                }
+                else
+                {
+                    assert(Utilities::fileExists(BAM_remapped));
+                }
+                std::cout << Utilities::timestamp() << "Remapping done.\n" << std::flush;
+                assert(Utilities::fileExists(BAM_remapped+".bai"));
+                remapped_BAMs.push_back(BAM_remapped);
+            }
+        }
+        Graph* g = BAMprocessor.getGraph();
+        hla::HLATyper HLAtyper(g, PRG_graph_dir, "");
+        BAMprocessor.alignReadsMulti(remapped_BAMs, 0, IS_estimate.first, IS_estimate.second, outputDirectory, true, &HLAtyper);
+        std::string expected_HLA_type_inference_output = outputDirectory + "/hla/R1_bestguess.txt";
+        assert(Utilities::fileExists(expected_HLA_type_inference_output));
+        hla::HLATyper::read_inferred_types(sampleID, inferredHLA, expected_HLA_type_inference_output);
+        if(file_true_HLA_types.length())
+        {
+            std::map<std::string, std::map<std::string, std::pair<std::string, std::string>>> trueHLA;
+            hla::HLATyper::read_true_types(trueHLA, file_true_HLA_types);
+            hla::HLATyper::evaluate_HLA_types(trueHLA, inferredHLA);
+        }
+    }
+    else if(arguments.at("action") == "HLA")
     {
 
         // ../bin/HLA-PRG-LA --action HLA --sampleID NA12878 --BAM /gpfs1/well/gsk_hla/temp_mapping_2/NA12878_PRG/merged.bam --outputDirectory /gpfs1/well/gsk_hla/HLA-PRG-LA/working/NA12878_PLATINUM --trueHLA /Net/birch/data/dilthey/1000GHLA/G1000_GSK_combined.txt.manuallyAmended
@@ -260,4 +419,3 @@ int main(int argc, char *argv[]) {
 
     return 0;
 }
-
