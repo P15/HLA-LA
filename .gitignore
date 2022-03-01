@@ -1,0 +1,37 @@
+# Eclipse
+.classpath
+.project
+.settings/
+
+# Intellij
+.idea/
+*.iml
+*.iws
+
+# Logs
+*.log
+
+# Mac
+.DS_Store
+
+# Python
+*.pyc
+
+# Images
+*.pdf
+*.png
+
+# Local files
+bam/*
+genomecov/*
+awscli-bundle.zip
+awscli-bundle/*
+
+# Validation results
+elements/common/validation_scripts/datasets
+elements/common/validation_scripts/outputs
+*G1K.recode.vcf
+
+# Aneuploidy datasets
+elements/common/pipelines/Aneuploidy/outputs
+elements/common/pipelines/Aneuploidy/genome_cov
