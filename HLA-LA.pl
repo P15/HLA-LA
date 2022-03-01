@@ -10,7 +10,11 @@ use Getopt::Long;
 use Data::Dumper;
 use Sys::Hostname;
 use Cwd qw/getcwd abs_path/;
+use Memory::Usage;
+use Pry;
 
+my $mu = Memory::Usage->new();
+$mu->record('starting work');
 $| = 1;
 my $this_bin_dir = $FindBin::RealBin;
 
@@ -115,6 +119,8 @@ if(-e $paths_ini)
 	close(INI);
 }
 $samtools_bin = find_path('samtools_bin', $samtools_bin, 'samtools');
+$mu->record('after creating variable');
+$mu->dump();
 $bwa_bin = find_path('bwa_bin', $bwa_bin, 'bwa');
 $java_bin = find_path('java_bin', $java_bin, 'java');
 $picard_sam2fastq_bin = find_path('picard_sam2fastq_bin', $picard_sam2fastq_bin, 'picard');
@@ -541,7 +547,21 @@ else
 
 	die "Binary $MHC_PRG_2_bin not there!" unless(-e $MHC_PRG_2_bin);
 	my $command_MHC_PRG = qq($MHC_PRG_2_bin --action HLA --maxThreads $maxThreads --sampleID $sampleID --outputDirectory $working_dir_thisSample --PRG_graph_dir $full_graph_dir --FASTQU $target_FASTQ_U_split --FASTQ1 $target_FASTQ_1 --FASTQ2 $target_FASTQ_2 --bwa_bin $bwa_bin --samtools_bin $samtools_bin --mapAgainstCompleteGenome $mapAgainstCompleteGenome --longReads $longReads);
+	# my $command_MHC_PRG = "$MHC_PRG_2_bin --action HLA2 \
+	# 																		--maxThreads $maxThreads \
+	# 																		--BAM $BAM \
+	# 																		--sampleID $sampleID \
+	# 																		--outputDirectory $working_dir_thisSample \
+	# 																		--PRG_graph_dir $full_graph_dir \
+	# 																		--FASTQU $target_FASTQ_U_split \
+	# 																		--FASTQ1 $target_FASTQ_1 \
+	# 																		--FASTQ2 $target_FASTQ_2 \
+	# 																		--bwa_bin $bwa_bin \
+	# 																		--samtools_bin $samtools_bin \
+	# 																		--mapAgainstCompleteGenome $mapAgainstCompleteGenome \
+	# 																		--longReads $longReads";
 	
+
 	print "\nNow executing:\n$command_MHC_PRG\n";
 
 	if(system($command_MHC_PRG) != 0)

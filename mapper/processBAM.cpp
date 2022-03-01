@@ -24,6 +24,8 @@
 #include "reads/oneReadPair.h"
 
 #include "../simulator/trueReadLevels.h"
+using std::ifstream;
+using std::cout;
 
 namespace mapper {
 
@@ -38,16 +40,23 @@ processBAM::processBAM(std::string graphDir_, unsigned int maxThreads) {
 
 	if(Utilities::fileExists(graph_serialized_fn) && (Utilities::fileLastWrite(graph_serialized_fn) > Utilities::fileLastWrite(graphFile)))
 	{
-		std::cout << Utilities::timestamp() << "Graph serialization existing and newer than graph file; read from " << graph_serialized_fn << "\n" << std::flush;
+		/* std::cout << Utilities::timestamp() << "Graph serialization existing and newer than graph file; read from " << graph_serialized_fn << "\n" << std::flush; */
+		std::cout << Utilities::timestamp() << "Graph serialization existing and newer than graph file; read from " << graph_serialized_fn << "\n";
 		
-		std::ifstream serialization_istream;
+		std::cout << "initializing ifstream..\n";
+		ifstream serialization_istream;
+		std::cout << "Opening istream...\n";
 		serialization_istream.open(graph_serialized_fn.c_str());
 		assert(serialization_istream.is_open());
 		boost::archive::text_iarchive archive_in(serialization_istream);
 		archive_in >> g;
 		serialization_istream.close();
+		std::cout << "Regenerating Node Incoming and Outgoing Edges...\n";
 		g->regenerateNodeIncomingOutgoingEdges();
+		std::cout << "Regeneration complete...\n";
+		std::cout << "Checking structure...\n";
 		g->checkStructure();
+		std::cout << "Check complete...\n";
 
 		std::cout << Utilities::timestamp() << "\tdone.\n" << std::flush;		
 	}
@@ -57,14 +66,16 @@ processBAM::processBAM(std::string graphDir_, unsigned int maxThreads) {
 		g->readFromFile(graphFile);
 	}
 	
+	cout << Utilities::timestamp() << "\tclear graph-level 2 underlying sequence positions\n";
 	graphLevel_2_underlyingSequencePositions.clear();
+	cout << Utilities::timestamp() << "\tresize graph-level 2 underlying sequence positions\n";
 	graphLevel_2_underlyingSequencePositions.resize(g->NodesPerLevel.size());
 
 	for(unsigned int levelI = 0; levelI < g->NodesPerLevel.size(); levelI++)
 	{
 		g_level_names.push_back(g->getOneLocusIDforLevel(levelI));
 	}
-    // extended reference genome
+	// extended reference genome
 
 	std::string extendedReferenceGenomePath;
 	if(Utilities::fileExists(graphDir + "/extendedReferenceGenomePath.txt"))
@@ -74,18 +85,20 @@ processBAM::processBAM(std::string graphDir_, unsigned int maxThreads) {
 	else
 	{
 		extendedReferenceGenomePath  = graphDir + "/extendedReferenceGenome/extendedReferenceGenome.fa";
-		assert(Utilities::fileExists(extendedReferenceGenomePath));
 	}
-    assert(Utilities::fileExists(extendedReferenceGenomePath));
 
-    std::string PRGonlyReferenceGenomePath = graphDir + "/mapping_PRGonly/referenceGenome.fa";
+	assert(Utilities::fileExists(extendedReferenceGenomePath));
 
-    assert(Utilities::fileExists(PRGonlyReferenceGenomePath));
+	std::string PRGonlyReferenceGenomePath = graphDir + "/mapping_PRGonly/referenceGenome.fa";
 
-    extendedReferenceGenomeSequences = Utilities::readFASTA(extendedReferenceGenomePath, false);
-    PRGonlyReferenceGenomeSequences = Utilities::readFASTA(PRGonlyReferenceGenomePath, false);
-    assert(PRGonlyReferenceGenomeSequences.count("PRG_5") == 0);
-    PRGonlyReferenceGenomeSequences["PRG_5"] = "N";
+	assert(Utilities::fileExists(PRGonlyReferenceGenomePath));
+
+	cout << "reading FASTA for extended reference genome sequences...\n";
+	extendedReferenceGenomeSequences = Utilities::readFASTA(extendedReferenceGenomePath, false);
+	cout << "reading FASTA for PRG only reference genome sequences...\n";
+	PRGonlyReferenceGenomeSequences = Utilities::readFASTA(PRGonlyReferenceGenomePath, false);
+	assert(PRGonlyReferenceGenomeSequences.count("PRG_5") == 0);
+	PRGonlyReferenceGenomeSequences["PRG_5"] = "N";
 
 	assert(g->NodesPerLevel.size() > 1);
 	inGraphGapStretch.resize(g->NodesPerLevel.size() - 1, false);
@@ -104,11 +117,11 @@ processBAM::processBAM(std::string graphDir_, unsigned int maxThreads) {
 
 			graphGapStretches++;
 
-			// std::cerr << "processBAM::processBAM(..) graph gap analysis: added long stretch from " << stretchStart_ << " to " << stretchStop_ << "\n" << std::flush;
+			cout << "processBAM::processBAM(..) graph gap analysis: added long stretch from " << stretchStart_ << " to " << stretchStop_ << "\n" << std::flush;
 		}
 	};
 
-	std::cerr << Utilities::timestamp() << "processBAM::processBAM(..): Start graph gap analysis.\n" << std::flush;
+	cout << Utilities::timestamp() << "processBAM::processBAM(..): Start graph gap analysis.\n" << std::flush;
 	
 	int stretchStart = -1;
 	for(unsigned int lI = 0; lI < (g->NodesPerLevel.size() - 1); lI++)
@@ -120,7 +133,7 @@ processBAM::processBAM(std::string graphDir_, unsigned int maxThreads) {
 			Edge* e = *edgeIt;
 			if(e->getEmission() == "_")
 			{
-				haveGapEdge++;
+				haveGapEdge = true;
 			}
 		}
 
@@ -148,7 +161,7 @@ processBAM::processBAM(std::string graphDir_, unsigned int maxThreads) {
 		addGapStretch(stretchStart, stretchStop);
 	}
 
-	std::cerr << Utilities::timestamp() << "processBAM::processBAM(..) graph gap analysis: have " << graphGapStretches << " graph gap stretches; criterion length >= " << gapStretchMinimumLength << "\n" << std::flush;
+	cout << Utilities::timestamp() << "processBAM::processBAM(..) graph gap analysis: have " << graphGapStretches << " graph gap stretches; criterion length >= " << gapStretchMinimumLength << "\n" << std::flush;
 
 	eA = new aligner::extensionAligner(g);
 
